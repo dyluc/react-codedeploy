@@ -1,0 +1,59 @@
+name: TestBuildDeploy
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Node 17.x
+        uses: actions/setup-node@v2
+        with:
+          node-version: 17.x
+          cache: 'npm'
+
+      - name: Install Deps
+        run: npm ci
+
+      - name: Test with Npm
+        run: npm test
+  build-push:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Node 17.x
+        uses: actions/setup-node@v2
+        with:
+          node-version: 17.x
+          cache: 'npm'
+
+      - name: Install Production Deps
+        run: npm ci --only=production
+
+      - name: Create Build
+        run: npm run build
+
+      - name: Zip Revision
+        uses: papeloto/action-zip@v1
+        with:
+          files: scripts build appspec.yml
+          recursive: false
+          dest: latest.zip
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_GITHUB_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_GITHUB_SECRET_KEY }}
+          aws-region: eu-west-2
+
+      - name: Push Revision to S3
+        run: |
+          aws s3 --region eu-west-2 cp latest.zip s3://react-codedeploy-revisions
